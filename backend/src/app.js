@@ -19,7 +19,7 @@ app.get("/", (req, res) => {
 app.use("/api", codeRoutes);
 app.use("/api", progressRoutes);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`API available at http://localhost:${PORT}/api`);

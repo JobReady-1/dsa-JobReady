@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { executeCode, runTestCases } = require("../services/codeExecutor");
 const { getProblem, getAllProblems } = require("../data/problems");
+const UserCodeModel = require("../models/UserCodeModel");
+const SubmissionHistoryModel = require("../models/SubmissionHistoryModel");
 
 // Get all problems
 router.get("/problems", (req, res) => {
@@ -92,6 +94,54 @@ router.post("/submit", async (req, res) => {
       error: "Submission failed",
       details: error.message,
     });
+  }
+});
+
+// Save user code for a problem/language
+router.post("/code/save", (req, res) => {
+  try {
+    const { problemId, language, code } = req.body;
+    if (!problemId || !language || code === undefined) {
+      return res.status(400).json({ success: false, error: "problemId, language, and code are required" });
+    }
+    UserCodeModel.saveCode(Number(problemId), language, code);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get saved code for a problem/language
+router.get("/code/:problemId/:language", (req, res) => {
+  try {
+    const saved = UserCodeModel.getCode(Number(req.params.problemId), req.params.language);
+    res.json({ success: true, saved });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Save a submission result
+router.post("/submissions/save", (req, res) => {
+  try {
+    const { problemId, ...data } = req.body;
+    if (!problemId) {
+      return res.status(400).json({ success: false, error: "problemId is required" });
+    }
+    SubmissionHistoryModel.saveSubmission(Number(problemId), data);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get submission history for a problem
+router.get("/submissions/:problemId", (req, res) => {
+  try {
+    const history = SubmissionHistoryModel.getSubmissions(Number(req.params.problemId));
+    res.json({ success: true, submissions: history });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
