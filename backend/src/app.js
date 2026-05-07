@@ -2,7 +2,7 @@ const path = require("path");
 const dotenv = require("dotenv");
 
 // Must be first — routes transitively create the DB pool on require()
-dotenv.config({ path: path.join(__dirname, "../../.env") });
+dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const express = require("express");
 const cors = require("cors");
