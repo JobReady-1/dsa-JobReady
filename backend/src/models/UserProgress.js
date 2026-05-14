@@ -47,6 +47,7 @@ class UserProgressModel {
             streak_current: 0,
             last_solved_date: null,
             time_spent_seconds: 0,
+            session_start_ms: null,
           }
         ])
         .select()
@@ -118,23 +119,45 @@ class UserProgressModel {
     }
   }
 
-  // Update time spent
-  static async updateTimeSpent(secondsToAdd, userId = 'user_001') {
+  // Start a session — stamps session_start_ms so elapsed time can be computed later
+  static async startSession(userId = 'user_001') {
+    try {
+      const { error } = await supabase
+        .from('dsa_user_progress')
+        .update({
+          session_start_ms: Date.now(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error starting session:', error);
+      throw error;
+    }
+  }
+
+  // Update time spent — computes elapsed from session_start_ms, adds to total, resets stamp
+  static async updateTimeSpent(userId = 'user_001') {
     try {
       const { data: currentData, error: fetchError } = await supabase
         .from('dsa_user_progress')
-        .select('time_spent_seconds')
+        .select('time_spent_seconds, session_start_ms')
         .eq('user_id', userId)
         .single();
 
       if (fetchError) throw fetchError;
 
-      const newTotal = (currentData.time_spent_seconds || 0) + secondsToAdd;
+      const now = Date.now();
+      const sessionStart = currentData.session_start_ms || now;
+      const elapsedSeconds = Math.floor((now - sessionStart) / 1000);
+      const newTotal = (currentData.time_spent_seconds || 0) + elapsedSeconds;
 
       const { error: updateError } = await supabase
         .from('dsa_user_progress')
         .update({
           time_spent_seconds: newTotal,
+          session_start_ms: now, // reset for the next interval
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId);

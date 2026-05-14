@@ -67,13 +67,16 @@ function executeCommand(command, input = "", cwd = TEMP_DIR) {
       }
     );
 
-    try {
-      // Always write something so stdin is not immediately empty (prevents EOF on first read)
-      child.stdin.write(input ? input + '\n' : '');
+    if (input) {
+      try {
+        child.stdin.write(input + '\n');
+        child.stdin.end();
+      } catch (err) {
+        console.log(`[Executor] Error writing input:`, err.message);
+        reject(new Error("Failed to write input to process"));
+      }
+    } else {
       child.stdin.end();
-    } catch (err) {
-      console.log(`[Executor] Error writing input:`, err.message);
-      reject(new Error("Failed to write input to process"));
     }
   });
 }
@@ -154,13 +157,10 @@ async function executeCode(code, language, input = "") {
     } catch (err) {
       console.log(`[Executor] Execution failed:`, err.message);
       await cleanup(filePath, compiledPath);
-      const isEOF = err.message.includes("EOFError") || err.message.includes("EOF");
       return {
         success: false,
-        error: isEOF ? "Input Error" : (err.message.includes("Time Limit") ? "Time Limit Exceeded" : "Runtime Error"),
-        details: isEOF
-          ? "Your code called input() but no input was provided. Make sure to enter custom input in the console before clicking Run Code."
-          : err.message,
+        error: err.message.includes("Time Limit") ? "Time Limit Exceeded" : "Runtime Error",
+        details: err.message,
       };
     }
   } catch (err) {
