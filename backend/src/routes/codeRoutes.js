@@ -1,11 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const { executeCode, runTestCases } = require("../services/codeExecutor");
-const { getProblem, getAllProblems } = require("../data/problems");
-const UserCodeModel = require("../models/UserCodeModel");
-const SubmissionHistoryModel = require("../models/SubmissionHistoryModel");
+const { getProblem, getAllProblems, getFullProblem, getTestCasesForSubmit } = require("../data/problems");
+const CodeDraftDB = require("../models/CodeDraftDB");
+const SubmissionDB = require("../models/SubmissionDB");
+const { requireAuth } = require("../middleware/auth");
+const { updateSkillScores, updateUserAnalytics, recordDailyActivity } = require("../services/skillScoreService");
 
-// Get all problems
+// ─── Problem catalogue (public) ──────────────────────────────────────────────
+
 router.get("/problems", (req, res) => {
   try {
     const problems = getAllProblems();
@@ -15,130 +18,127 @@ router.get("/problems", (req, res) => {
   }
 });
 
-// Get specific problem
 router.get("/problems/:id", (req, res) => {
   try {
-    const problem = getProblem(parseInt(req.params.id));
+    const problem = getFullProblem(parseInt(req.params.id));
     if (!problem) {
       return res.status(404).json({ success: false, error: "Problem not found" });
     }
-    res.json({ success: true, problem });
+    // Strip hidden test cases before sending to client
+    const { hiddenCases, ...safeProblem } = problem;
+    res.json({ success: true, problem: safeProblem });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Run code (without test cases - for testing)
-router.post("/run", async (req, res) => {
-  console.log("[API] /run endpoint called");
+// ─── Code execution ──────────────────────────────────────────────────────────
+
+// POST /api/run  — custom test input, no grading
+router.post("/run", requireAuth, async (req, res) => {
   try {
     const { code, language, input } = req.body;
-
     if (!code || !language) {
-      console.log("[API] Missing code or language");
-      return res.status(400).json({
-        success: false,
-        error: "Code and language are required",
-      });
+      return res.status(400).json({ success: false, error: "code and language are required" });
     }
-
-    console.log(`[API] Running code - Language: ${language}, Input length: ${input?.length || 0}`);
     const result = await executeCode(code, language, input || "");
-    console.log(`[API] Execution result:`, result.success ? "Success" : "Failed");
     res.json(result);
   } catch (error) {
-    console.error("[API] Run error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Execution failed",
-      details: error.message,
-    });
+    console.error("[API] /run error:", error.message);
+    res.status(500).json({ success: false, error: "Execution failed", details: error.message });
   }
 });
 
-// Submit code (run against test cases)
-router.post("/submit", async (req, res) => {
-  console.log("[API] /submit endpoint called");
+// POST /api/submit  — run against all test cases, save result
+router.post("/submit", requireAuth, async (req, res) => {
   try {
     const { code, language, problemId } = req.body;
-
     if (!code || !language || !problemId) {
-      console.log("[API] Missing required fields");
-      return res.status(400).json({
-        success: false,
-        error: "Code, language, and problemId are required",
-      });
+      return res.status(400).json({ success: false, error: "code, language, and problemId are required" });
     }
 
-    console.log(`[API] Submitting - Problem: ${problemId}, Language: ${language}`);
     const problem = getProblem(parseInt(problemId));
     if (!problem) {
-      console.log("[API] Problem not found");
-      return res.status(404).json({
-        success: false,
-        error: "Problem not found",
-      });
+      return res.status(404).json({ success: false, error: "Problem not found" });
     }
 
-    console.log(`[API] Running ${problem.testCases.length} test cases`);
-    const result = await runTestCases(code, language, problem.testCases);
-    console.log(`[API] Submission result: ${result.passedCount}/${result.totalCount} passed`);
+    // Record attempt before running (so count is correct even if execution fails)
+    await SubmissionDB.recordAttempt(req.userId, problemId);
+
+    const testCases = getTestCasesForSubmit(parseInt(problemId));
+    const result = await runTestCases(code, language, testCases);
+
+    // Determine verdict
+    let verdict = "WRONG_ANSWER";
+    if (result.allPassed) verdict = "ACCEPTED";
+    else if (result.results.some((r) => r.error === "Time Limit Exceeded")) verdict = "TLE";
+    else if (result.results.some((r) => r.error === "Runtime Error")) verdict = "RUNTIME_ERROR";
+    else if (result.results.some((r) => r.error === "Compilation Error")) verdict = "COMPILE_ERROR";
+
+    // Save to Supabase
+    const submission = await SubmissionDB.save(req.userId, problemId, {
+      language,
+      verdict,
+      passed_count: result.passedCount,
+      total_count: result.totalCount,
+      runtime_ms: result.avgRuntime_ms,
+      code,
+    });
+
+    // Update skill scores asynchronously (don't block the response)
+    const problemMeta = problem;
+    Promise.all([
+      recordDailyActivity(req.userId, verdict),
+      updateSkillScores(req.userId).then((scores) =>
+        updateUserAnalytics(req.userId, verdict, problemMeta.difficulty).then((analytics) => ({
+          skillScores: scores,
+          analytics,
+        }))
+      ),
+    ]).catch((err) => console.error("[SkillScore] update failed:", err.message));
+
     res.json({
       success: true,
+      verdict,
+      submissionId: submission.id,
+      submittedAt: submission.submitted_at,
       ...result,
     });
   } catch (error) {
-    console.error("[API] Submit error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Submission failed",
-      details: error.message,
-    });
+    console.error("[API] /submit error:", error.message);
+    res.status(500).json({ success: false, error: "Submission failed", details: error.message });
   }
 });
 
-// Save user code for a problem/language
-router.post("/code/save", (req, res) => {
+// ─── Code drafts ─────────────────────────────────────────────────────────────
+
+router.post("/code/save", requireAuth, async (req, res) => {
   try {
     const { problemId, language, code } = req.body;
     if (!problemId || !language || code === undefined) {
       return res.status(400).json({ success: false, error: "problemId, language, and code are required" });
     }
-    UserCodeModel.saveCode(Number(problemId), language, code);
+    await CodeDraftDB.save(req.userId, problemId, language, code);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Get saved code for a problem/language
-router.get("/code/:problemId/:language", (req, res) => {
+router.get("/code/:problemId/:language", requireAuth, async (req, res) => {
   try {
-    const saved = UserCodeModel.getCode(Number(req.params.problemId), req.params.language);
+    const saved = await CodeDraftDB.get(req.userId, req.params.problemId, req.params.language);
     res.json({ success: true, saved });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Save a submission result
-router.post("/submissions/save", (req, res) => {
-  try {
-    const { problemId, ...data } = req.body;
-    if (!problemId) {
-      return res.status(400).json({ success: false, error: "problemId is required" });
-    }
-    SubmissionHistoryModel.saveSubmission(Number(problemId), data);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// ─── Submission history ───────────────────────────────────────────────────────
 
-// Get submission history for a problem
-router.get("/submissions/:problemId", (req, res) => {
+router.get("/submissions/:problemId", requireAuth, async (req, res) => {
   try {
-    const history = SubmissionHistoryModel.getSubmissions(Number(req.params.problemId));
+    const history = await SubmissionDB.getByProblem(req.userId, req.params.problemId);
     res.json({ success: true, submissions: history });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import TestCard from "../components/TestCard";
 import { getStriverTests } from "../data/problems";
-import { getProgress, startSession, updateTimeSpent } from "../services/api";
+import { getProgress, startSession, updateTimeSpent, getAnalytics, getProblems } from "../services/api";
+import { SkillRadar, HeatmapCalendar, CategoryProgress, WeakAreas } from "../components/Analytics";
 
-export default function Dashboard({ onProblemClick }) {
+export default function Dashboard({ onProblemClick, onBrowseProblems }) {
   const tests = getStriverTests();
   const [progress, setProgress] = useState({
     completionPercentage: 0,
@@ -11,10 +12,14 @@ export default function Dashboard({ onProblemClick }) {
     timeSpent: "0.0h",
     solvedProblems: [],
   });
+  const [analytics, setAnalytics] = useState(null);
+  const [categoryTotals, setCategoryTotals] = useState({});
+  const [allCategories, setAllCategories] = useState([]);
 
   // Fetch progress on mount
   useEffect(() => {
     fetchProgress();
+    fetchAnalytics();
     startSession(); // Start tracking time
     
     // Update time spent every 30 seconds
@@ -33,6 +38,26 @@ export default function Dashboard({ onProblemClick }) {
       }
     } catch (error) {
       console.error("Failed to fetch progress:", error);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const [analyticsRes, problemsRes] = await Promise.all([
+        getAnalytics(),
+        getProblems(),
+      ]);
+      if (analyticsRes.success) setAnalytics(analyticsRes);
+      if (problemsRes.success) {
+        const totals = {};
+        problemsRes.problems.forEach((p) => {
+          totals[p.category] = (totals[p.category] ?? 0) + 1;
+        });
+        setCategoryTotals(totals);
+        setAllCategories(Object.keys(totals).sort());
+      }
+    } catch (error) {
+      console.error("Failed to fetch analytics:", error);
     }
   };
 
@@ -91,6 +116,65 @@ export default function Dashboard({ onProblemClick }) {
           <div className="time-label">TIME SPENT</div>
         </div>
       </div>
+
+      {/* Performance analytics */}
+      {analytics && (
+        <>
+          <div className="stats-row analytics-summary-row">
+            <div className="stat-card">
+              <div className="stat-label">INTERVIEW READINESS</div>
+              <div className="irs-number">
+                {Number(analytics.overview.interview_readiness ?? 0).toFixed(0)}
+                <span className="irs-total">/100</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">SOLVED</div>
+              <div className="solved-breakdown">
+                <span className="diff-easy">{analytics.overview.easy_solved} Easy</span>
+                <span className="diff-medium">{analytics.overview.medium_solved} Med</span>
+                <span className="diff-hard">{analytics.overview.hard_solved} Hard</span>
+              </div>
+              <div className="stat-sub">{analytics.overview.total_solved} total</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">ACCEPTANCE RATE</div>
+              <div className="irs-number">
+                {Number(analytics.overview.acceptance_rate ?? 0).toFixed(0)}
+                <span className="irs-total">%</span>
+              </div>
+              <div className="stat-sub">{analytics.overview.total_submissions} submissions</div>
+            </div>
+          </div>
+
+          <div className="analytics-grid">
+            <div className="analytics-card">
+              <h3 className="analytics-card-title">Skill Radar</h3>
+              <SkillRadar skillScores={analytics.skillScores} />
+            </div>
+            <div className="analytics-card">
+              <h3 className="analytics-card-title">Category Progress</h3>
+              <CategoryProgress
+                skillScores={analytics.skillScores}
+                categoryTotals={categoryTotals}
+              />
+            </div>
+            <div className="analytics-card">
+              <h3 className="analytics-card-title">Weak Areas</h3>
+              <WeakAreas
+                skillScores={analytics.skillScores}
+                allCategories={allCategories}
+                onPractice={(cat) => onBrowseProblems?.(cat)}
+              />
+            </div>
+          </div>
+
+          <div className="analytics-card heatmap-card">
+            <h3 className="analytics-card-title">Activity — last 6 months</h3>
+            <HeatmapCalendar heatmap={analytics.heatmap} />
+          </div>
+        </>
+      )}
 
       {/* Assessments */}
       <div className="assessments-header">

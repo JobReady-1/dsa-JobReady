@@ -1,5 +1,41 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
+// In production, set a Supabase access token via setAuthToken() after login.
+// In dev (no token), a persistent local userId is sent instead — matches the
+// backend's dev fallback in middleware/auth.js.
+
+let _authToken = null;
+
+export function setAuthToken(token) {
+  _authToken = token;
+}
+
+export function getDevUserId() {
+  let id = localStorage.getItem("dsa_dev_user_id");
+  if (!id) {
+    id = "dev-" + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem("dsa_dev_user_id", id);
+  }
+  return id;
+}
+
+function authHeaders() {
+  return _authToken ? { Authorization: `Bearer ${_authToken}` } : {};
+}
+
+// Adds userId to a body object when running without a token (dev mode)
+function withUser(body = {}) {
+  return _authToken ? body : { ...body, userId: getDevUserId() };
+}
+
+// Adds userId as a query param when running without a token (dev mode)
+function withUserQuery(url) {
+  if (_authToken) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}userId=${encodeURIComponent(getDevUserId())}`;
+}
+
 // Helper function to fetch with timeout
 async function fetchWithTimeout(url, options = {}, timeout = 30000) {
   const controller = new AbortController();
@@ -27,10 +63,8 @@ export async function runCode(code, language, input = "") {
       `${API_BASE_URL}/run`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code, language, input }),
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(withUser({ code, language, input })),
       },
       30000 // 30 second timeout
     );
@@ -53,10 +87,8 @@ export async function submitCode(code, language, problemId) {
       `${API_BASE_URL}/submit`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code, language, problemId }),
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(withUser({ code, language, problemId })),
       },
       60000 // 60 second timeout for submissions (multiple test cases)
     );
@@ -96,7 +128,9 @@ export async function getProblem(id) {
 // Progress API functions
 export async function getProgress() {
   try {
-    const response = await fetch(`${API_BASE_URL}/progress`);
+    const response = await fetch(withUserQuery(`${API_BASE_URL}/progress`), {
+      headers: authHeaders(),
+    });
     
     if (!response.ok) {
       throw new Error("Failed to fetch progress");
@@ -115,8 +149,9 @@ export async function markProblemSolved(problemId) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders(),
       },
-      body: JSON.stringify({ problemId }),
+      body: JSON.stringify(withUser({ problemId })),
     });
     
     if (!response.ok) {
@@ -134,6 +169,8 @@ export async function startSession() {
   try {
     const response = await fetch(`${API_BASE_URL}/progress/start-session`, {
       method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(withUser()),
     });
     
     if (!response.ok) {
@@ -151,6 +188,8 @@ export async function updateTimeSpent() {
   try {
     const response = await fetch(`${API_BASE_URL}/progress/update-time`, {
       method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(withUser()),
     });
     
     if (!response.ok) {
@@ -168,6 +207,8 @@ export async function resetProgress() {
   try {
     const response = await fetch(`${API_BASE_URL}/progress/reset`, {
       method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(withUser()),
     });
     
     if (!response.ok) {
@@ -179,4 +220,54 @@ export async function resetProgress() {
     console.error("[API] Reset progress error:", error);
     throw error;
   }
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export async function getAnalytics() {
+  const response = await fetch(withUserQuery(`${API_BASE_URL}/analytics`), {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to fetch analytics");
+  return response.json();
+}
+
+export async function recomputeAnalytics() {
+  const response = await fetch(`${API_BASE_URL}/analytics/recompute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(withUser()),
+  });
+  if (!response.ok) throw new Error("Failed to recompute analytics");
+  return response.json();
+}
+
+// ─── Code drafts & submission history ────────────────────────────────────────
+
+export async function saveDraft(problemId, language, code) {
+  const response = await fetch(`${API_BASE_URL}/code/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(withUser({ problemId, language, code })),
+  });
+  if (!response.ok) throw new Error("Failed to save draft");
+  return response.json();
+}
+
+export async function getDraft(problemId, language) {
+  const response = await fetch(
+    withUserQuery(`${API_BASE_URL}/code/${problemId}/${language}`),
+    { headers: authHeaders() }
+  );
+  if (!response.ok) throw new Error("Failed to fetch draft");
+  return response.json();
+}
+
+export async function getSubmissions(problemId) {
+  const response = await fetch(
+    withUserQuery(`${API_BASE_URL}/submissions/${problemId}`),
+    { headers: authHeaders() }
+  );
+  if (!response.ok) throw new Error("Failed to fetch submissions");
+  return response.json();
 }

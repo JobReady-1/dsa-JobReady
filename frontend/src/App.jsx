@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Dashboard from "./pages/Dashboard";
 import ProblemView from "./pages/ProblemView";
+import ProblemList from "./pages/ProblemList";
 import TestInstructions from "./pages/TestInstructions";
 import "./App.css";
 
@@ -43,7 +44,7 @@ function Navbar({ currentView, onNavigate }) {
   );
 }
 
-function Sidebar() {
+function Sidebar({ currentView, onNavigate, onBrowseProblems }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-profile">
@@ -60,14 +61,22 @@ function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        <a href="#" className="sidebar-link active">
+        <a
+          href="#"
+          className={`sidebar-link ${currentView === "dashboard" ? "active" : ""}`}
+          onClick={(e) => { e.preventDefault(); onNavigate("dashboard"); }}
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
             <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
           </svg>
           Dashboard
         </a>
-        <a href="#" className="sidebar-link">
+        <a
+          href="#"
+          className={`sidebar-link ${currentView === "problems" ? "active" : ""}`}
+          onClick={(e) => { e.preventDefault(); onBrowseProblems(""); }}
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
           </svg>
@@ -117,12 +126,28 @@ function Sidebar() {
 }
 
 export default function App() {
-  const [currentView, setCurrentView] = useState("dashboard"); // "dashboard", "instructions", or "problem"
+  const [currentView, setCurrentView] = useState("dashboard"); // "dashboard", "problems", "instructions", or "problem"
   const [selectedTest, setSelectedTest] = useState(null);
+  const [problemListCategory, setProblemListCategory] = useState("");
 
   const handleProblemClick = (test) => {
     setSelectedTest(test);
     setCurrentView("instructions"); // Show instructions first
+  };
+
+  const handleBrowseProblems = (category = "") => {
+    setProblemListCategory(category);
+    setCurrentView("problems");
+  };
+
+  // Open a single problem from the Problems list (no instructions screen)
+  const handleOpenSingleProblem = (problem) => {
+    setSelectedTest({
+      id: `single-${problem.id}`,
+      title: problem.title,
+      problemIds: [problem.id],
+    });
+    setCurrentView("problem");
   };
 
   const handleProceedToTest = () => {
@@ -155,9 +180,20 @@ export default function App() {
         />
       ) : (
         <div className="app-body">
-          <Sidebar />
+          <Sidebar currentView={currentView} onNavigate={setCurrentView} onBrowseProblems={handleBrowseProblems} />
           <main className="main-content">
-            <Dashboard onProblemClick={handleProblemClick} />
+            {currentView === "problems" ? (
+              <ProblemList
+                onOpenProblem={handleOpenSingleProblem}
+                initialCategory={problemListCategory}
+                key={problemListCategory}
+              />
+            ) : (
+              <Dashboard
+                onProblemClick={handleProblemClick}
+                onBrowseProblems={handleBrowseProblems}
+              />
+            )}
           </main>
         </div>
       )}

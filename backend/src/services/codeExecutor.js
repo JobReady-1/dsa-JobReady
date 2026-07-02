@@ -2,34 +2,55 @@ const { exec } = require("child_process");
 const fs = require("fs").promises;
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
+const { executeWithDocker } = require("./dockerExecutor");
+const { isJudge0Configured, executeWithJudge0, executeBatchWithJudge0 } = require("./judge0Executor");
 
 const TEMP_DIR = path.join(__dirname, "../../temp");
-const TIMEOUT = 10000; // 10 seconds (increased from 5)
+const TIMEOUT = 10000;
 
-// Language configurations
-const LANGUAGE_CONFIG = {
+// Detect Docker availability once at startup
+let dockerAvailable = null;
+async function isDockerAvailable() {
+  if (dockerAvailable !== null) return dockerAvailable;
+  return new Promise((resolve) => {
+    exec("docker info", { timeout: 3000 }, (err) => {
+      dockerAvailable = !err;
+      if (dockerAvailable) {
+        console.log("[Executor] Docker detected — using sandboxed execution");
+      } else {
+        console.warn(
+          "[Executor] Docker not available — falling back to local execution (dev only)"
+        );
+      }
+      resolve(dockerAvailable);
+    });
+  });
+}
+
+// ─── Local fallback (dev only) ───────────────────────────────────────────────
+
+const LOCAL_CONFIG = {
   java8: {
     extension: "java",
-    compile: (fileName) => `javac ${fileName}.java`,
-    run: (fileName) => `java ${fileName}`,
+    compile: (f) => `javac ${f}.java`,
+    run: (f) => `java ${f}`,
     className: "Solution",
   },
   python: {
     extension: "py",
-    run: (fileName) => `python ${fileName}.py`,
+    run: (f) => `python ${f}.py`,
   },
   cpp: {
     extension: "cpp",
-    compile: (fileName) => `g++ -o ${fileName} ${fileName}.cpp -std=c++17`,
-    run: (fileName) => `./${fileName}`,
+    compile: (f) => `g++ -o ${f} ${f}.cpp -std=c++17`,
+    run: (f) => `./${f}`,
   },
   javascript: {
     extension: "js",
-    run: (fileName) => `node ${fileName}.js`,
+    run: (f) => `node ${f}.js`,
   },
 };
 
-// Ensure temp directory exists
 async function ensureTempDir() {
   try {
     await fs.access(TEMP_DIR);
@@ -38,200 +59,185 @@ async function ensureTempDir() {
   }
 }
 
-// Execute command with timeout
 function executeCommand(command, input = "", cwd = TEMP_DIR) {
   return new Promise((resolve, reject) => {
-    console.log(`[Executor] Running command: ${command}`);
-    console.log(`[Executor] Input length: ${input.length} chars`);
-    
     const child = exec(
       command,
-      {
-        cwd,
-        timeout: TIMEOUT,
-        maxBuffer: 1024 * 1024, // 1MB
-        killSignal: 'SIGTERM',
-      },
+      { cwd, timeout: TIMEOUT, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
-          console.log(`[Executor] Error occurred:`, error.message);
-          if (error.killed || error.signal === 'SIGTERM') {
+          if (error.killed || error.signal === "SIGTERM") {
             reject(new Error("Time Limit Exceeded"));
           } else {
             reject(new Error(stderr || error.message));
           }
         } else {
-          console.log(`[Executor] Success - Output length: ${stdout.length} chars`);
           resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
         }
       }
     );
-
     try {
-      // Always write something so stdin is not immediately empty (prevents EOF on first read)
-      child.stdin.write(input ? input + '\n' : '');
+      child.stdin.write(input ? input + "\n" : "");
       child.stdin.end();
-    } catch (err) {
-      console.log(`[Executor] Error writing input:`, err.message);
+    } catch {
       reject(new Error("Failed to write input to process"));
     }
   });
 }
 
-// Clean up temporary files
-async function cleanup(filePath, compiledPath = null) {
-  try {
-    await fs.unlink(filePath);
-    if (compiledPath) {
-      await fs.unlink(compiledPath);
-    }
-  } catch (err) {
-    console.error("Cleanup error:", err);
-  }
-}
-
-// Main execution function
-async function executeCode(code, language, input = "") {
-  console.log(`[Executor] Starting execution - Language: ${language}`);
-  
+async function executeLocally(code, language, input = "") {
   await ensureTempDir();
-
-  const config = LANGUAGE_CONFIG[language];
-  if (!config) {
-    throw new Error(`Unsupported language: ${language}`);
-  }
+  const config = LOCAL_CONFIG[language];
+  if (!config) throw new Error(`Unsupported language: ${language}`);
 
   const fileId = uuidv4();
   const fileName = language === "java8" ? config.className : fileId;
   const filePath = path.join(TEMP_DIR, `${fileName}.${config.extension}`);
-  const compiledPath = language === "cpp" ? path.join(TEMP_DIR, fileName) : null;
-
-  console.log(`[Executor] File path: ${filePath}`);
+  const compiledPath =
+    language === "cpp" ? path.join(TEMP_DIR, fileName) : null;
 
   try {
-    // Write code to file
     await fs.writeFile(filePath, code);
-    console.log(`[Executor] Code written to file`);
 
-    // Compile if needed
     if (config.compile) {
-      console.log(`[Executor] Compiling...`);
       try {
-        const compileResult = await executeCommand(config.compile(fileName));
-        if (compileResult.stderr) {
-          console.log(`[Executor] Compilation warning/error:`, compileResult.stderr);
-          await cleanup(filePath, compiledPath);
-          return {
-            success: false,
-            error: "Compilation Error",
-            details: compileResult.stderr,
-          };
+        const cr = await executeCommand(config.compile(fileName));
+        if (cr.stderr) {
+          return { success: false, error: "Compilation Error", details: cr.stderr, runtime_ms: 0 };
         }
-        console.log(`[Executor] Compilation successful`);
       } catch (err) {
-        console.log(`[Executor] Compilation failed:`, err.message);
-        await cleanup(filePath, compiledPath);
-        return {
-          success: false,
-          error: "Compilation Error",
-          details: err.message,
-        };
+        return { success: false, error: "Compilation Error", details: err.message, runtime_ms: 0 };
       }
     }
 
-    // Execute code
-    console.log(`[Executor] Executing code...`);
+    const startTime = Date.now();
     try {
       const result = await executeCommand(config.run(fileName), input);
-      console.log(`[Executor] Execution successful`);
-      await cleanup(filePath, compiledPath);
-      
       return {
         success: true,
         output: result.stdout,
         error: result.stderr || null,
+        runtime_ms: Date.now() - startTime,
       };
     } catch (err) {
-      console.log(`[Executor] Execution failed:`, err.message);
-      await cleanup(filePath, compiledPath);
+      const isTLE = err.message.includes("Time Limit");
       const isEOF = err.message.includes("EOFError") || err.message.includes("EOF");
       return {
         success: false,
-        error: isEOF ? "Input Error" : (err.message.includes("Time Limit") ? "Time Limit Exceeded" : "Runtime Error"),
+        error: isTLE ? "Time Limit Exceeded" : isEOF ? "Input Error" : "Runtime Error",
         details: isEOF
-          ? "Your code called input() but no input was provided. Make sure to enter custom input in the console before clicking Run Code."
+          ? "Your code called input() but no input was provided."
           : err.message,
+        runtime_ms: Date.now() - startTime,
       };
     }
-  } catch (err) {
-    console.log(`[Executor] Unexpected error:`, err.message);
-    await cleanup(filePath, compiledPath);
-    throw err;
+  } finally {
+    try { await fs.unlink(filePath); } catch {}
+    if (compiledPath) try { await fs.unlink(compiledPath); } catch {}
   }
 }
 
-// Normalize output for comparison
-function normalizeOutput(output) {
-  if (!output) return "";
-  
-  return output
-    .trim()                           // Remove leading/trailing whitespace
-    .replace(/\r\n/g, "\n")          // Normalize line endings (Windows to Unix)
-    .replace(/\r/g, "\n")            // Handle old Mac line endings
-    .replace(/\s+$/gm, "")           // Remove trailing whitespace from each line
-    .replace(/\n+$/, "")             // Remove trailing newlines
-    .replace(/^\n+/, "");            // Remove leading newlines
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+// Execution priority: Judge0 (if configured) → Docker → local (dev only)
+let judge0Announced = false;
+async function executeCode(code, language, input = "") {
+  if (isJudge0Configured()) {
+    if (!judge0Announced) {
+      console.log("[Executor] Judge0 configured — using Judge0 for execution");
+      judge0Announced = true;
+    }
+    try {
+      return await executeWithJudge0(code, language, input);
+    } catch (err) {
+      console.error("[Executor] Judge0 failed, falling back:", err.message);
+    }
+  }
+  const useDocker = await isDockerAvailable();
+  if (useDocker) {
+    return executeWithDocker(code, language, input);
+  }
+  return executeLocally(code, language, input);
 }
 
-// Run code against test cases
+function normalizeOutput(output) {
+  if (!output) return "";
+  return output
+    .trim()
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\s+$/gm, "")
+    .replace(/\n+$/, "")
+    .replace(/^\n+/, "");
+}
+
 async function runTestCases(code, language, testCases) {
   const results = [];
 
+  // Judge0 batch: run all test cases in one round-trip
+  let batchResults = null;
+  if (isJudge0Configured()) {
+    try {
+      batchResults = await executeBatchWithJudge0(
+        code,
+        language,
+        testCases.map((tc) => tc.input)
+      );
+    } catch (err) {
+      console.error("[Executor] Judge0 batch failed, falling back to sequential:", err.message);
+    }
+  }
+
   for (let i = 0; i < testCases.length; i++) {
-    const testCase = testCases[i];
-    const result = await executeCode(code, language, testCase.input);
+    const tc = testCases[i];
+    const result = batchResults ? batchResults[i] : await executeCode(code, language, tc.input);
 
     if (!result.success) {
       results.push({
         testCase: i + 1,
         passed: false,
-        input: testCase.input,
-        expectedOutput: testCase.output,
+        input: tc.input,
+        expectedOutput: tc.output,
         actualOutput: null,
         error: result.error,
         details: result.details,
+        runtime_ms: result.runtime_ms || 0,
+        isHidden: tc.isHidden || false,
       });
     } else {
-      // Normalize both outputs for comparison
       const normalizedActual = normalizeOutput(result.output);
-      const normalizedExpected = normalizeOutput(testCase.output);
+      const normalizedExpected = normalizeOutput(tc.output);
       const passed = normalizedActual === normalizedExpected;
-      
+
       results.push({
         testCase: i + 1,
         passed,
-        input: testCase.input,
-        expectedOutput: testCase.output,
-        actualOutput: result.output,
-        normalizedActual,
-        normalizedExpected,
+        input: tc.isHidden ? "[hidden]" : tc.input,
+        expectedOutput: tc.isHidden ? "[hidden]" : tc.output,
+        actualOutput: tc.isHidden && !passed ? "[hidden]" : result.output,
+        normalizedActual: tc.isHidden ? undefined : normalizedActual,
+        normalizedExpected: tc.isHidden ? undefined : normalizedExpected,
         error: null,
+        runtime_ms: result.runtime_ms || 0,
+        isHidden: tc.isHidden || false,
       });
     }
   }
 
   const allPassed = results.every((r) => r.passed);
   const passedCount = results.filter((r) => r.passed).length;
+  const avgRuntime =
+    results.length > 0
+      ? Math.round(results.reduce((s, r) => s + (r.runtime_ms || 0), 0) / results.length)
+      : 0;
 
   return {
     allPassed,
     passedCount,
     totalCount: testCases.length,
+    avgRuntime_ms: avgRuntime,
     results,
   };
 }
 
-module.exports = {
-  executeCode,
-  runTestCases,
-};
+module.exports = { executeCode, runTestCases };

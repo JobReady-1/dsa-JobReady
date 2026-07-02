@@ -1,6 +1,19 @@
 import { useState, useEffect } from "react";
-import { runCode, submitCode, markProblemSolved, updateTimeSpent } from "../services/api";
+import { runCode, submitCode, markProblemSolved, updateTimeSpent, getProblem, saveDraft, getDraft } from "../services/api";
 import { getProblemById } from "../data/problems";
+import CodeMirror from "@uiw/react-codemirror";
+import { python } from "@codemirror/lang-python";
+import { javascript } from "@codemirror/lang-javascript";
+import { java } from "@codemirror/lang-java";
+import { cpp } from "@codemirror/lang-cpp";
+import { vscodeDark } from "@uiw/codemirror-theme-vscode";
+
+const EDITOR_LANGS = {
+  python: python(),
+  javascript: javascript(),
+  java8: java(),
+  cpp: cpp(),
+};
 
 // Mock test data - in real app, this would come from props
 const MOCK_TEST = {
@@ -54,18 +67,72 @@ export default function ProblemView({ onBack, test }) {
   const [isResizing, setIsResizing] = useState(false);
   const [solvedProblems, setSolvedProblems] = useState(new Set());
   const [pasteWarning, setPasteWarning] = useState(false);
+  const [serverProblem, setServerProblem] = useState(null);
+  const [revealedHints, setRevealedHints] = useState(0);
 
   // Use the passed test or fallback to mock data
   const currentTest = test || MOCK_TEST;
 
-  // Get current problem
+  // Get current problem — prefer full server data (hints, editorial, starter code)
   const currentProblemId = currentTest.problemIds[currentProblemIndex];
-  const currentProblem = getProblemById(currentProblemId);
+  const currentProblem = serverProblem?.id === currentProblemId ? serverProblem : getProblemById(currentProblemId);
 
-  const handleLanguageChange = (e) => {
+  const starterFor = (lang) =>
+    serverProblem?.id === currentProblemId && serverProblem.starterCode?.[lang]
+      ? serverProblem.starterCode[lang]
+      : STARTER_CODE[lang];
+
+  // Fetch full problem + saved draft when the problem changes
+  useEffect(() => {
+    let cancelled = false;
+    setRevealedHints(0);
+    (async () => {
+      try {
+        const res = await getProblem(currentProblemId);
+        if (!cancelled && res.success) setServerProblem(res.problem);
+      } catch {
+        /* fall back to local data */
+      }
+      try {
+        const draft = await getDraft(currentProblemId, language);
+        if (!cancelled && draft.success && draft.saved?.code) {
+          setCode(draft.saved.code);
+          return;
+        }
+      } catch {
+        /* no draft */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentProblemId]);
+
+  // Apply server starter code once it loads (unless a draft already filled the editor)
+  useEffect(() => {
+    if (serverProblem?.id === currentProblemId && code === STARTER_CODE[language]) {
+      setCode(starterFor(language));
+    }
+  }, [serverProblem]);
+
+  // Autosave draft (debounced 2s)
+  useEffect(() => {
+    if (!code || code === starterFor(language)) return;
+    const t = setTimeout(() => {
+      saveDraft(currentProblemId, language, code).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [code, language, currentProblemId]);
+
+  const handleLanguageChange = async (e) => {
     const newLang = e.target.value;
     setLanguage(newLang);
-    setCode(STARTER_CODE[newLang]);
+    try {
+      const draft = await getDraft(currentProblemId, newLang);
+      if (draft.success && draft.saved?.code) {
+        setCode(draft.saved.code);
+        return;
+      }
+    } catch { /* no draft */ }
+    setCode(starterFor(newLang));
   };
 
   const handleProblemChange = (index) => {
@@ -144,7 +211,7 @@ export default function ProblemView({ onBack, test }) {
   };
 
   const handleResetCode = () => {
-    setCode(STARTER_CODE[language]);
+    setCode(starterFor(language));
     setConsoleOutput("");
     setSubmissionResult(null);
   };
@@ -280,6 +347,12 @@ export default function ProblemView({ onBack, test }) {
               Submissions
             </button>
             <button
+              className={`tab ${activeTab === "hints" ? "active" : ""}`}
+              onClick={() => setActiveTab("hints")}
+            >
+              Hints
+            </button>
+            <button
               className={`tab ${activeTab === "editorial" ? "active" : ""}`}
               onClick={() => setActiveTab("editorial")}
             >
@@ -348,16 +421,23 @@ export default function ProblemView({ onBack, test }) {
                   <div className="submission-summary">
                     <h2>Latest Submission</h2>
                     <div className={`result-badge ${submissionResult.allPassed ? "success" : "failed"}`}>
-                      {submissionResult.allPassed ? "✓ All Tests Passed" : "✗ Some Tests Failed"}
+                      {submissionResult.verdict
+                        ? submissionResult.verdict.replace(/_/g, " ")
+                        : submissionResult.allPassed ? "✓ All Tests Passed" : "✗ Some Tests Failed"}
                     </div>
                     <div className="result-stats">
                       <span>Passed: {submissionResult.passedCount}/{submissionResult.totalCount}</span>
+                      {submissionResult.avgRuntime_ms != null && (
+                        <span> · Avg runtime: {submissionResult.avgRuntime_ms} ms</span>
+                      )}
                     </div>
                     <div className="test-results">
                       {submissionResult.results.map((result, idx) => (
                         <div key={idx} className={`test-result ${result.passed ? "passed" : "failed"}`}>
                           <div className="test-result-header">
-                            <span className="test-number">Test Case {result.testCase}</span>
+                            <span className="test-number">
+                              Test Case {result.testCase}{result.isHidden ? " (hidden)" : ""}
+                            </span>
                             <span className={`test-status ${result.passed ? "passed" : "failed"}`}>
                               {result.passed ? "✓ PASSED" : "✗ FAILED"}
                             </span>
@@ -387,10 +467,50 @@ export default function ProblemView({ onBack, test }) {
               </div>
             )}
 
-            {activeTab === "editorial" && (
-              <div className="empty-state">
-                <p>Editorial will be available after you solve the problem.</p>
+            {activeTab === "hints" && (
+              <div className="hints-content">
+                {currentProblem?.hints?.length ? (
+                  <>
+                    {currentProblem.hints.slice(0, revealedHints).map((hint, idx) => (
+                      <div key={idx} className="hint-item">
+                        <strong>Hint {idx + 1}:</strong> {hint}
+                      </div>
+                    ))}
+                    {revealedHints < currentProblem.hints.length && (
+                      <button
+                        className="reveal-hint-btn"
+                        onClick={() => setRevealedHints((n) => n + 1)}
+                      >
+                        Reveal hint {revealedHints + 1} of {currentProblem.hints.length}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="empty-state"><p>No hints available for this problem.</p></div>
+                )}
               </div>
+            )}
+
+            {activeTab === "editorial" && (
+              solvedProblems.has(currentProblemId) && currentProblem?.editorial ? (
+                <div className="editorial-content">
+                  <h2>Editorial</h2>
+                  <h3>APPROACH</h3>
+                  <p className="problem-desc">{currentProblem.editorial.approach}</p>
+                  <div className="problem-meta-info">
+                    <span className="meta-item">
+                      <strong>Time:</strong> {currentProblem.editorial.timeComplexity}
+                    </span>
+                    <span className="meta-item">
+                      <strong>Space:</strong> {currentProblem.editorial.spaceComplexity}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>🔒 Editorial unlocks after you solve this problem.</p>
+                </div>
+              )
             )}
           </div>
         </div>
@@ -434,16 +554,30 @@ export default function ProblemView({ onBack, test }) {
                 <span>Pasting from external sources is disabled. Please type your solution.</span>
               </div>
             )}
-            <textarea
-              className="code-textarea"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onPaste={handlePaste}
-              onCopy={handleCopy}
+            <div
+              className="codemirror-wrapper"
+              onPasteCapture={handlePaste}
               onContextMenu={handleContextMenu}
-              onKeyDown={handleKeyDown}
-              spellCheck="false"
-            />
+              onKeyDownCapture={handleKeyDown}
+            >
+              <CodeMirror
+                value={code}
+                height="100%"
+                theme={vscodeDark}
+                extensions={[EDITOR_LANGS[language] ?? python()]}
+                onChange={(value) => setCode(value)}
+                basicSetup={{
+                  lineNumbers: true,
+                  highlightActiveLine: true,
+                  highlightActiveLineGutter: true,
+                  foldGutter: true,
+                  autocompletion: true,
+                  bracketMatching: true,
+                  closeBrackets: true,
+                  indentOnInput: true,
+                }}
+              />
+            </div>
           </div>
 
           <div className="editor-footer">

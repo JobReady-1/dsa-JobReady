@@ -1693,3 +1693,200 @@
     font-size: 14px;
   }
 }
+
+/* ─── Phase 4: Analytics & Problem List ─────────────────────────────────── */
+
+.analytics-summary-row { margin-top: 16px; }
+
+.irs-number {
+  font-size: 32px;
+  font-weight: 700;
+  color: #22c55e;
+  margin-top: 6px;
+}
+.irs-total { font-size: 16px; color: #64748b; font-weight: 500; }
+.stat-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+.solved-breakdown {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.diff-easy { color: #22c55e; }
+.diff-medium { color: #eab308; }
+.diff-hard { color: #ef4444; }
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.analytics-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 18px;
+}
+.analytics-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0 0 12px;
+}
+
+.skill-radar { width: 100%; max-width: 300px; display: block; margin: 0 auto; }
+.radar-empty { color: #64748b; font-size: 13px; padding: 20px 0; text-align: center; }
+
+.heatmap-card { margin-top: 16px; }
+.heatmap-scroll { overflow-x: auto; padding-bottom: 6px; }
+
+.category-progress-list { display: flex; flex-direction: column; gap: 12px; }
+.category-progress-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.category-name { font-size: 13px; color: #e2e8f0; font-weight: 500; }
+.category-count { font-size: 12px; color: #64748b; }
+
+.weak-areas { display: flex; flex-direction: column; gap: 10px; }
+.weak-area-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.weak-area-score { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.practice-btn {
+  background: #22c55e;
+  color: #052e16;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.practice-btn:hover { background: #4ade80; }
+
+/* Problem list page */
+.problem-list-page { padding: 24px 32px; }
+.problem-list-header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.problem-list-header h1 { font-size: 24px; margin: 0; color: #f1f5f9; }
+.problem-list-count { color: #22c55e; font-size: 14px; font-weight: 600; }
+
+.problem-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.filter-search {
+  flex: 1;
+  min-width: 200px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  color: #e2e8f0;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.filter-select {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  color: #e2e8f0;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.problem-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.problem-table th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  padding: 12px 14px;
+  border-bottom: 1px solid #1f2937;
+}
+.problem-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #1a2332;
+  font-size: 14px;
+  color: #cbd5e1;
+}
+.problem-row { cursor: pointer; }
+.problem-row:hover td { background: #16213a; }
+.problem-id { color: #64748b; }
+.problem-title { font-weight: 500; color: #f1f5f9; }
+.problem-category { color: #94a3b8; font-size: 13px; }
+.difficulty-badge { font-weight: 600; font-size: 13px; }
+.empty-row { text-align: center; color: #64748b; padding: 30px !important; }
+.error-text { color: #ef4444; }
+
+/* Hints & Editorial */
+.hints-content, .editorial-content { padding: 4px 0; }
+.hint-item {
+  background: #1e293b;
+  border-left: 3px solid #eab308;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+.reveal-hint-btn {
+  background: transparent;
+  border: 1px dashed #475569;
+  color: #94a3b8;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+.reveal-hint-btn:hover { border-color: #eab308; color: #eab308; }
+.editorial-content h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin: 16px 0 8px;
+}
+
+/* CodeMirror editor */
+.codemirror-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  height: 100%;
+}
+.codemirror-wrapper .cm-editor {
+  height: 100%;
+  font-size: 14px;
+}
+.codemirror-wrapper .cm-editor.cm-focused { outline: none; }
+.codemirror-wrapper .cm-scroller {
+  font-family: "Fira Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+  line-height: 1.6;
+}

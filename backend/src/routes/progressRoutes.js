@@ -1,103 +1,99 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const UserProgressDB = require('../models/UserProgressDB');
+const UserProgressDB = require("../models/UserProgressDB");
+const { requireAuth } = require("../middleware/auth");
+const { getAnalytics, updateSkillScores, updateUserAnalytics } = require("../services/skillScoreService");
 
-// Helper – extract userId from request (body for POST, query for GET)
-function getUserId(req) {
-  return req.body?.userId || req.query?.userId || null;
-}
+// All progress routes require auth; userId comes from req.userId (set by middleware)
 
-function requireUserId(req, res) {
-  const userId = getUserId(req);
-  if (!userId) {
-    res.status(400).json({ success: false, error: 'userId is required' });
-    return null;
-  }
-  return userId;
-}
-
-// GET /api/progress?userId=...
-router.get('/progress', async (req, res) => {
+router.get("/progress", requireAuth, async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const progress = await UserProgressDB.getProgress(userId);
+    const progress = await UserProgressDB.getProgress(req.userId);
     res.json({ success: true, progress });
   } catch (error) {
-    console.error('[Progress] getProgress error:', error.message);
+    console.error("[Progress] getProgress error:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/progress/solve  { userId, problemId }
-router.post('/progress/solve', async (req, res) => {
+router.post("/progress/solve", requireAuth, async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
     const { problemId } = req.body;
     if (!problemId) {
-      return res.status(400).json({ success: false, error: 'problemId is required' });
+      return res.status(400).json({ success: false, error: "problemId is required" });
     }
-    const progress = await UserProgressDB.markProblemSolved(userId, problemId);
+    const progress = await UserProgressDB.markProblemSolved(req.userId, problemId);
     res.json({ success: true, progress });
   } catch (error) {
-    console.error('[Progress] markProblemSolved error:', error.message);
+    console.error("[Progress] markProblemSolved error:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/progress/start-session  { userId }
-router.post('/progress/start-session', async (req, res) => {
+router.post("/progress/start-session", requireAuth, async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const result = await UserProgressDB.startSession(userId);
+    const result = await UserProgressDB.startSession(req.userId);
     res.json({ success: true, ...result });
   } catch (error) {
-    console.error('[Progress] startSession error:', error.message);
+    console.error("[Progress] startSession error:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/progress/update-time  { userId }
-router.post('/progress/update-time', async (req, res) => {
+router.post("/progress/update-time", requireAuth, async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const progress = await UserProgressDB.updateTimeSpent(userId);
+    const progress = await UserProgressDB.updateTimeSpent(req.userId);
     res.json({ success: true, progress });
   } catch (error) {
-    console.error('[Progress] updateTimeSpent error:', error.message);
+    console.error("[Progress] updateTimeSpent error:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/progress/reset  { userId }
-router.post('/progress/reset', async (req, res) => {
+router.post("/progress/reset", requireAuth, async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const progress = await UserProgressDB.reset(userId);
-    res.json({ success: true, progress, message: 'Progress reset successfully' });
+    const progress = await UserProgressDB.reset(req.userId);
+    res.json({ success: true, progress, message: "Progress reset successfully" });
   } catch (error) {
-    console.error('[Progress] reset error:', error.message);
+    console.error("[Progress] reset error:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// POST /api/progress/test-solved  { userId, problemIds[] }
-router.post('/progress/test-solved', async (req, res) => {
+router.post("/progress/test-solved", requireAuth, async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
     const { problemIds } = req.body;
     if (!problemIds || !Array.isArray(problemIds)) {
-      return res.status(400).json({ success: false, error: 'problemIds array is required' });
+      return res.status(400).json({ success: false, error: "problemIds array is required" });
     }
-    const solvedProblems = await UserProgressDB.getSolvedProblemsForTest(userId, problemIds);
+    const solvedProblems = await UserProgressDB.getSolvedProblemsForTest(req.userId, problemIds);
     res.json({ success: true, solvedProblems });
   } catch (error) {
-    console.error('[Progress] getSolvedProblemsForTest error:', error.message);
+    console.error("[Progress] getSolvedProblemsForTest error:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── Analytics (skill scores, heatmap, IRS) ──────────────────────────────────
+
+router.get("/analytics", requireAuth, async (req, res) => {
+  try {
+    const data = await getAnalytics(req.userId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    console.error("[Analytics] getAnalytics error:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Force-recompute scores (useful after back-filling data)
+router.post("/analytics/recompute", requireAuth, async (req, res) => {
+  try {
+    const scores = await updateSkillScores(req.userId);
+    const analytics = await updateUserAnalytics(req.userId, null, null);
+    res.json({ success: true, scores, analytics });
+  } catch (error) {
+    console.error("[Analytics] recompute error:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
