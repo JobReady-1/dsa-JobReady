@@ -710,8 +710,35 @@ const problems = {
   },
 };
 
+const FRONTEND_TO_BACKEND_MAP = {
+  1: 1,    // Two Sum
+  3: 2,    // Contains Duplicate
+  4: 3,    // Product of Array Except Self
+  56: 4,   // Valid Palindrome
+  9: 5,    // 3Sum
+  10: 6,   // Container With Most Water
+  2: 7,    // Best Time to Buy and Sell Stock
+  50: 8,   // Longest Substring Without Repeating Characters
+  52: 9,   // Minimum Window Substring
+  40: 10,  // Reverse Linked List
+  42: 11,  // Merge Two Sorted Lists
+  41: 12,  // Linked List Cycle
+  7: 13,   // Find Minimum in Rotated Sorted Array
+  8: 14,   // Search in Rotated Sorted Array
+  60: 16,  // Maximum Depth of Binary Tree
+  61: 17,  // Same Tree
+  62: 18,  // Invert Binary Tree
+  16: 19,  // Climbing Stairs
+  17: 20,  // Coin Change
+  18: 21,  // Longest Increasing Subsequence
+  30: 22,  // Number of Islands
+  27: 23,  // Clone Graph
+  29: 24,  // Pacific Atlantic Water Flow
+};
+
 function getProblem(id) {
-  return problems[id] || null;
+  const backendId = FRONTEND_TO_BACKEND_MAP[id] || id;
+  return problems[backendId] || null;
 }
 
 function getAllProblems() {

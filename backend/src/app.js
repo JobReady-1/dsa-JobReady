@@ -1,11 +1,11 @@
+const dotenv = require("dotenv");
+dotenv.config();
+
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const codeRoutes = require("./routes/codeRoutes");
 const progressRoutes = require("./routes/progressRoutes");
 const codeStorageRoutes = require("./routes/codeStorageRoutes");
-
-dotenv.config();
 
 const app = express();
 

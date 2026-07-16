@@ -7,8 +7,11 @@ const SubmissionsModel = require('../models/Submissions');
 router.post('/code/save', async (req, res) => {
   try {
     const { userId, problemId, language, code } = req.body;
-    if (!userId || !problemId || !language || code === undefined) {
-      return res.status(400).json({ success: false, error: 'userId, problemId, language and code are required' });
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'userId is required' });
+    }
+    if (!problemId || !language || code === undefined) {
+      return res.status(400).json({ success: false, error: 'problemId, language and code are required' });
     }
     await SavedCodeModel.save(userId, problemId, language, code);
     res.json({ success: true });
@@ -20,9 +23,12 @@ router.post('/code/save', async (req, res) => {
 // Get saved code for a problem + language
 router.get('/code/:problemId/:language', async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = req.query.userId;
+    if (!userId) {
+      // No user ID — return empty (not another user's code)
+      return res.json({ success: true, saved: null });
+    }
     const { problemId, language } = req.params;
-    if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
 
     const saved = await SavedCodeModel.get(userId, parseInt(problemId), language);
     res.json({ success: true, saved });
@@ -35,8 +41,11 @@ router.get('/code/:problemId/:language', async (req, res) => {
 router.post('/submissions/save', async (req, res) => {
   try {
     const { userId, problemId, language, allPassed, passedCount, totalCount, results } = req.body;
-    if (!userId || !problemId || !language) {
-      return res.status(400).json({ success: false, error: 'userId, problemId and language are required' });
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'userId is required' });
+    }
+    if (!problemId || !language) {
+      return res.status(400).json({ success: false, error: 'problemId and language are required' });
     }
     await SubmissionsModel.save(userId, problemId, language, allPassed, passedCount, totalCount, results || []);
     res.json({ success: true });
@@ -48,9 +57,12 @@ router.post('/submissions/save', async (req, res) => {
 // Get submission history for a problem
 router.get('/submissions/:problemId', async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = req.query.userId;
+    if (!userId) {
+      // No user ID — return empty history (not another user's submissions)
+      return res.json({ success: true, submissions: [] });
+    }
     const { problemId } = req.params;
-    if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
 
     const submissions = await SubmissionsModel.getForProblem(userId, parseInt(problemId));
     res.json({ success: true, submissions });

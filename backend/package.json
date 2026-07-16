@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon --ignore data/ src/app.js",
+    "dev:worker": "nodemon --ignore data/ src/worker.js"
   },
   "keywords": [],
   "author": "",
@@ -14,9 +15,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.105.0",
     "axios": "^1.15.2",
+    "bullmq": "^5.80.5",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^5.11.1",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

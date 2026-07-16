@@ -262,45 +262,60 @@ function normalizeOutput(output) {
  * @param {Array} testCases - Array of {input, output} objects
  * @returns {Promise<Object>} Test results
  */
-async function runTestCases(code, language, testCases) {
-  const results = [];
+async function runTestCases(code, language, testCases, onProgress = null) {
+  const results = new Array(testCases.length);
+  const batchSize = 5;
 
-  for (let i = 0; i < testCases.length; i++) {
-    const testCase = testCases[i];
-    console.log(`[Judge0] Running test case ${i + 1}/${testCases.length}`);
+  for (let i = 0; i < testCases.length; i += batchSize) {
+    const batch = testCases.slice(i, i + batchSize);
     
-    const result = await executeCode(code, language, testCase.input);
-
-    if (!result.success) {
-      results.push({
-        testCase: i + 1,
-        passed: false,
-        input: testCase.input,
-        expectedOutput: testCase.output,
-        actualOutput: null,
-        error: result.error,
-        details: result.details,
-        time: result.time,
-        memory: result.memory,
-      });
-    } else {
-      // Normalize and compare outputs
-      const normalizedActual = normalizeOutput(result.output);
-      const normalizedExpected = normalizeOutput(testCase.output);
-      const passed = normalizedActual === normalizedExpected;
+    const promises = batch.map(async (testCase, index) => {
+      const globalIndex = i + index;
+      console.log(`[Judge0] Running test case ${globalIndex + 1}/${testCases.length}`);
       
-      results.push({
-        testCase: i + 1,
-        passed,
-        input: testCase.input,
-        expectedOutput: testCase.output,
-        actualOutput: result.output,
-        normalizedActual,
-        normalizedExpected,
-        error: null,
-        time: result.time,
-        memory: result.memory,
-      });
+      const result = await executeCode(code, language, testCase.input);
+
+      let testCaseResult;
+      if (!result.success) {
+        testCaseResult = {
+          testCase: globalIndex + 1,
+          passed: false,
+          input: testCase.input,
+          expectedOutput: testCase.output,
+          actualOutput: null,
+          error: result.error,
+          details: result.details,
+          time: result.time,
+          memory: result.memory,
+        };
+      } else {
+        // Normalize and compare outputs
+        const normalizedActual = normalizeOutput(result.output);
+        const normalizedExpected = normalizeOutput(testCase.output);
+        const passed = normalizedActual === normalizedExpected;
+        
+        testCaseResult = {
+          testCase: globalIndex + 1,
+          passed,
+          input: testCase.input,
+          expectedOutput: testCase.output,
+          actualOutput: result.output,
+          normalizedActual,
+          normalizedExpected,
+          error: null,
+          time: result.time,
+          memory: result.memory,
+        };
+      }
+      
+      results[globalIndex] = testCaseResult;
+    });
+
+    await Promise.all(promises);
+
+    if (typeof onProgress === 'function') {
+      const completedCount = Math.min(i + batchSize, testCases.length);
+      onProgress(completedCount, testCases.length);
     }
   }
 
