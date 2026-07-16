@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { runCode, submitCode, markProblemSolved, updateTimeSpent, getProblem, saveDraft, getDraft } from "../services/api";
+import { runCode, submitCode, markProblemSolved, updateTimeSpent, getProblem, saveDraft, getDraft, getSubmissionStatus } from "../services/api";
 import { getProblemById } from "../data/problems";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
@@ -165,47 +165,96 @@ export default function ProblemView({ onBack, test }) {
   const handleSubmitCode = async () => {
     setIsSubmitting(true);
     setConsoleOpen(true);
-    setConsoleOutput("Submitting code...\n");
+    setConsoleOutput("Submitting code to queue...\n");
 
     try {
-      const result = await submitCode(code, language, currentProblemId);
+      const enqueueResult = await submitCode(code, language, currentProblemId);
+      if (!enqueueResult.success || !enqueueResult.submissionId) {
+        throw new Error("Failed to enqueue submission");
+      }
       
-      if (result.success) {
-        setSubmissionResult(result);
-        setActiveTab("submissions");
-        
-        // Mark as solved if all tests pass
-        if (result.allPassed) {
-          setSolvedProblems(prev => new Set([...prev, currentProblemId]));
+      const submissionId = enqueueResult.submissionId;
+      let attempts = 0;
+      const maxAttempts = 30;
+      
+      const pollInterval = setInterval(async () => {
+        attempts++;
+        try {
+          const statusResult = await getSubmissionStatus(submissionId);
           
-          // Update backend progress
-          try {
-            await markProblemSolved(currentProblemId);
-            await updateTimeSpent(); // Update time when problem is solved
-          } catch (error) {
-            console.error("Failed to update progress:", error);
+          if (statusResult.status === "queued") {
+            setConsoleOutput(`Submission is in queue... (Waiting for worker)\n`);
+          } else if (statusResult.status === "running") {
+            const progress =
+              statusResult.current !== undefined && statusResult.total !== undefined
+                ? `(${statusResult.current}/${statusResult.total})`
+                : "";
+            setConsoleOutput(`Executing code on Judge0... Running test cases ${progress}\n`);
+          } else if (statusResult.status === "completed" || statusResult.status === "failed") {
+            clearInterval(pollInterval);
+            setIsSubmitting(false);
+            
+            if (statusResult.status === "completed") {
+              const finalResult = {
+                success: true,
+                allPassed: statusResult.allPassed || false,
+                passedCount: statusResult.passedCount || 0,
+                totalCount: statusResult.totalCount || 0,
+                results: statusResult.results || [],
+              };
+              
+              setSubmissionResult(finalResult);
+              setActiveTab("submissions");
+              
+              // Mark as solved if all tests pass
+              if (finalResult.allPassed) {
+                setSolvedProblems(prev => new Set([...prev, currentProblemId]));
+                
+                // Update backend progress
+                try {
+                  await markProblemSolved(currentProblemId);
+                  await updateTimeSpent(); // Update time when problem is solved
+                } catch (error) {
+                  console.error("Failed to update progress:", error);
+                }
+              }
+              
+              let out = `Submission Result:\n`;
+              out += `Passed: ${finalResult.passedCount}/${finalResult.totalCount} test cases\n\n`;
+              
+              if (statusResult.metrics) {
+                const m = statusResult.metrics;
+                out += `Metrics:\n  - Wait Time in Queue: ${m.queue_wait_time}ms\n  - Execution Time: ${Math.round(m.total_execution_time_ms)}ms\n  - Max Test Run Time: ${m.max_time_seconds}s\n  - Max Memory: ${m.max_memory_kb} KB\n\n`;
+              }
+              
+              finalResult.results.forEach((r) => {
+                out += `Test Case ${r.testCase}: ${r.passed ? "✓ PASSED" : "✗ FAILED"}\n`;
+                if (!r.passed) {
+                  out += `  Input: ${r.input}\n`;
+                  out += `  Expected: ${r.expectedOutput}\n`;
+                  out += `  Got: ${r.actualOutput || r.error}\n`;
+                }
+              });
+              
+              setConsoleOutput(out);
+            } else {
+              setConsoleOutput(`Submission failed: ${statusResult.error || "Unknown evaluation error"}`);
+            }
           }
+        } catch (pollErr) {
+          console.error("[Polling] Error:", pollErr);
         }
         
-        let output = `Submission Result:\n`;
-        output += `Passed: ${result.passedCount}/${result.totalCount} test cases\n\n`;
-        
-        result.results.forEach((r) => {
-          output += `Test Case ${r.testCase}: ${r.passed ? "✓ PASSED" : "✗ FAILED"}\n`;
-          if (!r.passed) {
-            output += `  Input: ${r.input}\n`;
-            output += `  Expected: ${r.expectedOutput}\n`;
-            output += `  Got: ${r.actualOutput || r.error}\n`;
-          }
-        });
-        
-        setConsoleOutput(output);
-      } else {
-        setConsoleOutput(`Submission failed: ${result.error}`);
-      }
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          setIsSubmitting(false);
+          setConsoleOutput(
+            `⚠ Submission status polling timed out (30s).\n\nYour code is still running in the background. Please wait a moment and refresh your Submissions tab to check the results.`
+          );
+        }
+      }, 1000);
     } catch (error) {
       setConsoleOutput(`Error: ${error.message}`);
-    } finally {
       setIsSubmitting(false);
     }
   };

@@ -53,7 +53,7 @@ async function updateSkillScores(userId) {
      JOIN dsa_problem_attempts pa
        ON pa.user_id = s.user_id AND pa.problem_id = s.problem_id
      WHERE s.user_id = $1
-       AND s.verdict = 'ACCEPTED'
+       AND s.all_passed = true
      ORDER BY s.submitted_at ASC`,
     [userId]
   );
@@ -126,15 +126,15 @@ async function updateSkillScores(userId) {
   return { categoryScores: normalised, categoryCounts, irs: Math.min(100, irs) };
 }
 
-async function updateUserAnalytics(userId, newVerdict, newDifficulty) {
+async function updateUserAnalytics(userId, allPassed, newDifficulty) {
   // Fetch aggregate counts from submissions table (source of truth)
   const { rows: stats } = await pool.query(
     `SELECT
-       COUNT(*) FILTER (WHERE verdict = 'ACCEPTED') AS total_solved,
+       COUNT(*) FILTER (WHERE all_passed = true) AS total_solved,
        COUNT(*) AS total_submissions,
-       COUNT(*) FILTER (WHERE verdict = 'ACCEPTED' AND difficulty = 'Easy') AS easy_solved,
-       COUNT(*) FILTER (WHERE verdict = 'ACCEPTED' AND difficulty = 'Medium') AS medium_solved,
-       COUNT(*) FILTER (WHERE verdict = 'ACCEPTED' AND difficulty = 'Hard') AS hard_solved
+       COUNT(*) FILTER (WHERE all_passed = true AND difficulty = 'Easy') AS easy_solved,
+       COUNT(*) FILTER (WHERE all_passed = true AND difficulty = 'Medium') AS medium_solved,
+       COUNT(*) FILTER (WHERE all_passed = true AND difficulty = 'Hard') AS hard_solved
      FROM (
        SELECT DISTINCT ON (problem_id) s.*, p.difficulty
        FROM dsa_submissions s
@@ -149,7 +149,7 @@ async function updateUserAnalytics(userId, newVerdict, newDifficulty) {
   // Simpler: count distinct solved problems per difficulty by querying submissions + problems in JS
   const { rows: solvedRows } = await pool.query(
     `SELECT DISTINCT problem_id FROM dsa_submissions
-     WHERE user_id = $1 AND verdict = 'ACCEPTED'`,
+     WHERE user_id = $1 AND all_passed = true`,
     [userId]
   );
 
@@ -181,7 +181,7 @@ async function updateUserAnalytics(userId, newVerdict, newDifficulty) {
   const { rows: activityRows } = await pool.query(
     `SELECT DISTINCT DATE(submitted_at AT TIME ZONE 'UTC') AS day
      FROM dsa_submissions
-     WHERE user_id = $1 AND verdict = 'ACCEPTED'
+     WHERE user_id = $1 AND all_passed = true
      ORDER BY day DESC`,
     [userId]
   );
@@ -243,7 +243,7 @@ async function updateUserAnalytics(userId, newVerdict, newDifficulty) {
       acceptanceRate.toFixed(2),
       currentStreak,
       longestStreak,
-      lastSolvedAt ?? null,
+      allPassed ? new Date().toISOString() : (analyticsResult.rows[0]?.last_solved_at ?? null),
       irs.toFixed(2),
     ]
   );
@@ -261,9 +261,9 @@ async function updateUserAnalytics(userId, newVerdict, newDifficulty) {
   };
 }
 
-async function recordDailyActivity(userId, verdict) {
+async function recordDailyActivity(userId, allPassed) {
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const solved = verdict === "ACCEPTED" ? 1 : 0;
+  const solved = allPassed ? 1 : 0;
 
   await pool.query(
     `INSERT INTO dsa_daily_activity (user_id, activity_date, problems_solved, submissions)

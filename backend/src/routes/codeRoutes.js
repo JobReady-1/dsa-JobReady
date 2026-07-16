@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
-const { executeCode, runTestCases } = require("../services/codeExecutor");
-const { getProblem, getAllProblems, getFullProblem, getTestCasesForSubmit } = require("../data/problems");
+const { v4: uuidv4 } = require("uuid");
+const { executeCode } = require("../services/codeExecutor");
+const { getProblem, getAllProblems, getFullProblem } = require("../data/problems");
 const CodeDraftDB = require("../models/CodeDraftDB");
 const SubmissionDB = require("../models/SubmissionDB");
 const { requireAuth } = require("../middleware/auth");
-const { updateSkillScores, updateUserAnalytics, recordDailyActivity } = require("../services/skillScoreService");
+const { submissionQueue, connection } = require("../services/submissionQueue");
 
 // ─── Problem catalogue (public) ──────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ router.post("/run", requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/submit  — run against all test cases, save result
+// POST /api/submit  — run against all test cases (async enqueuing)
 router.post("/submit", requireAuth, async (req, res) => {
   try {
     const { code, language, problemId } = req.body;
@@ -62,51 +63,90 @@ router.post("/submit", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Problem not found" });
     }
 
+    const submissionId = uuidv4();
+
     // Record attempt before running (so count is correct even if execution fails)
     await SubmissionDB.recordAttempt(req.userId, problemId);
 
-    const testCases = getTestCasesForSubmit(parseInt(problemId));
-    const result = await runTestCases(code, language, testCases);
+    // 1. Pre-insert record into database durably (status: queued)
+    await SubmissionDB.createQueued(submissionId, req.userId, parseInt(problemId), language);
 
-    // Determine verdict
-    let verdict = "WRONG_ANSWER";
-    if (result.allPassed) verdict = "ACCEPTED";
-    else if (result.results.some((r) => r.error === "Time Limit Exceeded")) verdict = "TLE";
-    else if (result.results.some((r) => r.error === "Runtime Error")) verdict = "RUNTIME_ERROR";
-    else if (result.results.some((r) => r.error === "Compilation Error")) verdict = "COMPILE_ERROR";
+    // 2. Write initial queued state to Redis cache
+    const initialStatus = {
+      status: 'queued',
+      current: 0,
+      total: problem.testCases?.length || 0
+    };
+    await connection.setex(`submission:status:${submissionId}`, 3600, JSON.stringify(initialStatus));
 
-    // Save to Supabase
-    const submission = await SubmissionDB.save(req.userId, problemId, {
-      language,
-      verdict,
-      passed_count: result.passedCount,
-      total_count: result.totalCount,
-      runtime_ms: result.avgRuntime_ms,
-      code,
-    });
-
-    // Update skill scores asynchronously (don't block the response)
-    const problemMeta = problem;
-    Promise.all([
-      recordDailyActivity(req.userId, verdict),
-      updateSkillScores(req.userId).then((scores) =>
-        updateUserAnalytics(req.userId, verdict, problemMeta.difficulty).then((analytics) => ({
-          skillScores: scores,
-          analytics,
-        }))
-      ),
-    ]).catch((err) => console.error("[SkillScore] update failed:", err.message));
+    // 3. Enqueue in BullMQ, unifying job ID to matching submissionId UUID
+    await submissionQueue.add(
+      'submission',
+      { submissionId, userId: req.userId, problemId: parseInt(problemId), language, code },
+      { jobId: submissionId }
+    );
 
     res.json({
       success: true,
-      verdict,
-      submissionId: submission.id,
-      submittedAt: submission.submitted_at,
-      ...result,
+      submissionId,
     });
   } catch (error) {
     console.error("[API] /submit error:", error.message);
     res.status(500).json({ success: false, error: "Submission failed", details: error.message });
+  }
+});
+
+// GET /api/submissions/status/:id — Fetch evaluation status
+router.get("/submissions/status/:id", requireAuth, async (req, res) => {
+  const submissionId = req.params.id;
+  try {
+    // 1. Check Redis cache first (Fast Path)
+    const cachedData = await connection.get(`submission:status:${submissionId}`);
+    if (cachedData) {
+      const parsed = JSON.parse(cachedData);
+      return res.json({
+        success: true,
+        ...parsed,
+      });
+    }
+
+    // 2. Fall back to PostgreSQL Database (Cold Path)
+    console.log(`[API] Redis cache cold. Querying DB for submission ${submissionId}`);
+    const submission = await SubmissionDB.getById(submissionId);
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        error: "Submission not found",
+      });
+    }
+
+    const resultsObj = submission.results || {};
+    if (resultsObj.status === 'queued' || resultsObj.status === 'running') {
+      return res.json({
+        success: true,
+        status: resultsObj.status,
+        current: resultsObj.current || 0,
+        total: resultsObj.total || 0,
+      });
+    }
+
+    // Default to completed if metrics exist
+    res.json({
+      success: true,
+      status: resultsObj.status || 'completed',
+      allPassed: submission.allPassed,
+      passedCount: submission.passedCount,
+      totalCount: submission.totalCount,
+      results: resultsObj.results || [],
+      metrics: resultsObj.metrics || {},
+    });
+  } catch (error) {
+    console.error("[API] Status polling error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to load submission status",
+      details: error.message,
+    });
   }
 });
 

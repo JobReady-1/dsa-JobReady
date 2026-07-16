@@ -105,6 +105,20 @@ export async function submitCode(code, language, problemId) {
   }
 }
 
+export async function getSubmissionStatus(submissionId) {
+  try {
+    const response = await fetch(
+      withUserQuery(`${API_BASE_URL}/submissions/status/${submissionId}`),
+      { headers: authHeaders() }
+    );
+    if (!response.ok) throw new Error("Failed to fetch submission status");
+    return response.json();
+  } catch (error) {
+    console.error("[API] Get submission status error:", error);
+    throw error;
+  }
+}
+
 export async function getProblems() {
   const response = await fetch(`${API_BASE_URL}/problems`);
 
