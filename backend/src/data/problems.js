@@ -365,9 +365,73 @@ int findMin(vector<int>& nums){ return 0; }
 int main(){ int n; cin>>n; vector<int> v(n); for(int& x:v) cin>>x; cout<<findMin(v)<<endl; }`,
     },
     testCases: [
-      { input: "5\n3 4 5 1 2",      output: "1"  },
-      { input: "7\n4 5 6 7 0 1 2",  output: "0"  },
-      { input: "1\n11",             output: "11" },
+      { input: "6\n-1 0 1 2 -1 -4", output: "-1 -1 2\n-1 0 1", hidden: false },
+      { input: "3\n0 1 1", output: "", hidden: false },
+      { input: "3\n0 0 0", output: "0 0 0", hidden: false },
+      { input: "4\n1 2 -2 -1", output: "", hidden: true },
+      { input: "5\n-2 0 1 1 2", output: "-2 0 2\n-2 1 1", hidden: true },
+      { input: "7\n-4 -1 -1 0 1 2 3", output: "-4 1 3\n-1 -1 2\n-1 0 1", hidden: true },
+      { input: "6\n3 0 -2 -1 1 2", output: "-2 -1 3\n-2 0 2\n-1 0 1", hidden: true },
+      { input: "8\n-5 -4 -3 -2 -1 0 1 2", output: "-5 3 2\n-4 2 2\n-3 1 2\n-2 0 2\n-2 1 1", hidden: true },
+      { input: "4\n1 1 1 1", output: "", hidden: true },
+      { input: "9\n-1 0 1 2 -1 -4 -2 -3 3", output: "-4 1 3\n-3 0 3\n-3 1 2\n-2 -1 3\n-2 0 2\n-1 -1 2\n-1 0 1", hidden: true },
+    ],
+  },
+  6: {
+    id: 6,
+    title: "Container With Most Water",
+    difficulty: "Medium",
+    topic: "Arrays",
+    category: "Two Pointers",
+    description: "You are given an integer array height of length n. Find two lines that together with the x-axis form a container, such that the container contains the most water.",
+    examples: [
+      { input: "height = [1,8,6,2,5,4,8,3,7]", output: "49" },
+      { input: "height = [1,1]", output: "1" }
+    ],
+    constraints: [
+      "n == height.length",
+      "2 <= n <= 10^5",
+      "0 <= height[i] <= 10^4"
+    ],
+    testCases: [
+      { input: "9\n1 8 6 2 5 4 8 3 7", output: "49", hidden: false },
+      { input: "2\n1 1", output: "1", hidden: false },
+      { input: "6\n4 3 2 1 4 5", output: "16", hidden: true },
+      { input: "3\n1 2 1", output: "2", hidden: true },
+      { input: "7\n2 3 4 5 18 17 6", output: "17", hidden: true },
+      { input: "5\n1 8 100 2 100", output: "200", hidden: true },
+      { input: "10\n1 2 3 4 5 6 7 8 9 10", output: "25", hidden: true },
+      { input: "4\n10 10 10 10", output: "30", hidden: true },
+      { input: "8\n5 2 12 1 5 3 4 11", output: "55", hidden: true },
+    ],
+  },
+
+  // Sliding Window
+  7: {
+    id: 7,
+    title: "Best Time to Buy and Sell Stock",
+    difficulty: "Easy",
+    topic: "Arrays",
+    category: "Sliding Window",
+    description: "You are given an array prices where prices[i] is the price of a given stock on the ith day. You want to maximize your profit by choosing a single day to buy one stock and choosing a different day in the future to sell that stock.",
+    examples: [
+      { input: "prices = [7,1,5,3,6,4]", output: "5" },
+      { input: "prices = [7,6,4,3,1]", output: "0" }
+    ],
+    constraints: [
+      "1 <= prices.length <= 10^5",
+      "0 <= prices[i] <= 10^4"
+    ],
+    testCases: [
+      { input: "6\n7 1 5 3 6 4", output: "5", hidden: false },
+      { input: "5\n7 6 4 3 1", output: "0", hidden: false },
+      { input: "4\n1 2 3 4", output: "3", hidden: true },
+      { input: "5\n2 4 1 7 5", output: "6", hidden: true },
+      { input: "3\n3 3 3", output: "0", hidden: true },
+      { input: "7\n10 1 5 6 7 1 10", output: "9", hidden: true },
+      { input: "6\n5 10 5 10 5 10", output: "5", hidden: true },
+      { input: "8\n1 2 4 2 5 7 2 4", output: "6", hidden: true },
+      { input: "4\n100 50 25 10", output: "0", hidden: true },
     ],
     hiddenCases: [
       { input: "3\n3 1 2",          output: "1",  isHidden: true },
@@ -418,9 +482,16 @@ int search(vector<int>& nums, int target){ return -1; }
 int main(){ int n; cin>>n; vector<int> v(n); for(int& x:v) cin>>x; int t; cin>>t; cout<<search(v,t)<<endl; }`,
     },
     testCases: [
-      { input: "7\n4 5 6 7 0 1 2\n0", output: "4"  },
-      { input: "7\n4 5 6 7 0 1 2\n3", output: "-1" },
-      { input: "1\n1\n0",             output: "-1" },
+      { input: "abcabcbb", output: "3", hidden: false },
+      { input: "bbbbb", output: "1", hidden: false },
+      { input: "pwwkew", output: "3", hidden: false },
+      { input: "dvdf", output: "3", hidden: true },
+      { input: "anviaj", output: "5", hidden: true },
+      { input: "abcdefg", output: "7", hidden: true },
+      { input: "aab", output: "2", hidden: true },
+      { input: "tmmzuxt", output: "5", hidden: true },
+      { input: " ", output: "1", hidden: true },
+      { input: "abba", output: "2", hidden: true },
     ],
     hiddenCases: [
       { input: "5\n5 1 2 3 4\n1",     output: "1",  isHidden: true },
@@ -1997,9 +2068,16 @@ int main(){ int n; cin>>n; vector<int> v(n); for(int& x:v) cin>>x;
     reverse(v.begin(),v.end()); for(int i=0;i<n;i++){ if(i) cout<<' '; cout<<v[i]; } cout<<endl; }`,
     },
     testCases: [
-      { input: "5\n1 2 3 4 5", output: "5 4 3 2 1" },
-      { input: "2\n1 2",       output: "2 1"       },
-      { input: "1\n1",         output: "1"         },
+      { input: "5\n1 2 3 4 5", output: "5 4 3 2 1", hidden: false },
+      { input: "2\n1 2", output: "2 1", hidden: false },
+      { input: "1\n1", output: "1", hidden: false },
+      { input: "3\n10 20 30", output: "30 20 10", hidden: true },
+      { input: "4\n-1 -2 -3 -4", output: "-4 -3 -2 -1", hidden: true },
+      { input: "6\n1 1 1 1 1 1", output: "1 1 1 1 1 1", hidden: true },
+      { input: "7\n7 6 5 4 3 2 1", output: "1 2 3 4 5 6 7", hidden: true },
+      { input: "8\n100 200 300 400 500 600 700 800", output: "800 700 600 500 400 300 200 100", hidden: true },
+      { input: "4\n0 0 0 0", output: "0 0 0 0", hidden: true },
+      { input: "10\n1 2 3 4 5 6 7 8 9 10", output: "10 9 8 7 6 5 4 3 2 1", hidden: true },
     ],
     hiddenCases: [
       { input: "0\n",          output: "",          isHidden: true },
@@ -2914,9 +2992,16 @@ bool isPalindrome(string s){ return false; }
 int main(){ string s; getline(cin,s); cout<<(isPalindrome(s)?"true":"false")<<endl; }`,
     },
     testCases: [
-      { input: "A man, a plan, a canal: Panama", output: "true"  },
-      { input: "race a car",                    output: "false" },
-      { input: " ",                             output: "true"  },
+      { input: "4\n3 2 0 -4\n1", output: "true", hidden: false },
+      { input: "2\n1 2\n0", output: "true", hidden: false },
+      { input: "1\n1\n-1", output: "false", hidden: false },
+      { input: "3\n1 2 3\n-1", output: "false", hidden: true },
+      { input: "5\n1 2 3 4 5\n2", output: "true", hidden: true },
+      { input: "3\n1 2 3\n0", output: "true", hidden: true },
+      { input: "6\n10 20 30 40 50 60\n-1", output: "false", hidden: true },
+      { input: "4\n5 5 5 5\n3", output: "true", hidden: true },
+      { input: "7\n1 2 3 4 5 6 7\n4", output: "true", hidden: true },
+      { input: "2\n100 200\n-1", output: "false", hidden: true },
     ],
     hiddenCases: [
       { input: "0P",                            output: "false", isHidden: true },
@@ -4438,8 +4523,35 @@ int main(){ int n; cin>>n; cin.ignore(); vector<string> strs(n); for(auto& s:str
 
 };
 
+const FRONTEND_TO_BACKEND_MAP = {
+  1: 1,    // Two Sum
+  3: 2,    // Contains Duplicate
+  4: 3,    // Product of Array Except Self
+  56: 4,   // Valid Palindrome
+  9: 5,    // 3Sum
+  10: 6,   // Container With Most Water
+  2: 7,    // Best Time to Buy and Sell Stock
+  50: 8,   // Longest Substring Without Repeating Characters
+  52: 9,   // Minimum Window Substring
+  40: 10,  // Reverse Linked List
+  42: 11,  // Merge Two Sorted Lists
+  41: 12,  // Linked List Cycle
+  7: 13,   // Find Minimum in Rotated Sorted Array
+  8: 14,   // Search in Rotated Sorted Array
+  60: 16,  // Maximum Depth of Binary Tree
+  61: 17,  // Same Tree
+  62: 18,  // Invert Binary Tree
+  16: 19,  // Climbing Stairs
+  17: 20,  // Coin Change
+  18: 21,  // Longest Increasing Subsequence
+  30: 22,  // Number of Islands
+  27: 23,  // Clone Graph
+  29: 24,  // Pacific Atlantic Water Flow
+};
+
 function getProblem(id) {
-  return problems[id] || null;
+  const backendId = FRONTEND_TO_BACKEND_MAP[id] || id;
+  return problems[backendId] || null;
 }
 
 function getAllProblems() {

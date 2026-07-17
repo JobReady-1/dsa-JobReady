@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+package-lock.json
 
 # Environment variables
 .env
@@ -33,3 +34,6 @@ backend/data/user-progress.json
 
 # Submission checklist (internal use)
 SUBMISSION_CHECKLIST.md
+
+# Judge0 (separate repository)
+judge0/

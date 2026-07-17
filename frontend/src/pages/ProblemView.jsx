@@ -265,41 +265,6 @@ export default function ProblemView({ onBack, test }) {
     setSubmissionResult(null);
   };
 
-  // Prevent paste from external sources
-  const handlePaste = (e) => {
-    e.preventDefault();
-    setPasteWarning(true);
-    
-    // Hide warning after 3 seconds
-    setTimeout(() => {
-      setPasteWarning(false);
-    }, 3000);
-  };
-
-  // Allow copy within the editor
-  const handleCopy = (e) => {
-    // Allow normal copy behavior
-    return true;
-  };
-
-  // Prevent context menu (right-click)
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-  };
-
-  // Prevent keyboard shortcuts for paste
-  const handleKeyDown = (e) => {
-    // Prevent Ctrl+V (Windows/Linux) and Cmd+V (Mac)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-      e.preventDefault();
-      setPasteWarning(true);
-      
-      setTimeout(() => {
-        setPasteWarning(false);
-      }, 3000);
-    }
-  };
-
   // Handle console resize
   const handleMouseDown = (e) => {
     setIsResizing(true);
@@ -338,15 +303,55 @@ export default function ProblemView({ onBack, test }) {
 
   return (
     <div className="problem-view">
+      {/* Exit Warning Modal */}
+      {showExitWarning && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <h2>Exit Test?</h2>
+            </div>
+            <div className="modal-body">
+              <p>You haven't completed all problems yet.</p>
+              <p>Progress: {solvedProblems.size}/{currentTest.problemIds.length} problems solved</p>
+              <p>Time remaining: {formatTime(timeRemaining)}</p>
+              <p className="warning-text">Are you sure you want to exit? Your progress will be saved but you won't be able to resume this test.</p>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={cancelExit}>
+                Continue Test
+              </button>
+              <button className="btn-danger" onClick={confirmExit}>
+                Exit Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="problem-header">
-        <button className="back-btn" onClick={onBack}>
+        <button className="back-btn" onClick={handleBackClick} title={isTestComplete ? "Back to Dashboard" : "Exit Test (Warning)"}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
           </svg>
         </button>
         <h1 className="problem-title">{currentProblem?.title || "Loading..."}</h1>
+        
+        {/* Timer Display */}
+        <div className={`timer-display ${timeRemaining <= 300 ? 'timer-warning' : ''} ${timeRemaining <= 60 ? 'timer-critical' : ''}`}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <span className="timer-text">{formatTime(timeRemaining)}</span>
+        </div>
+        
         <div className="problem-meta-badges">
           <span className={`badge ${currentProblem?.difficulty.toLowerCase()}`}>
             {currentProblem?.difficulty}
@@ -361,7 +366,6 @@ export default function ProblemView({ onBack, test }) {
           {/* Q1, Q2, Q3 Navigation */}
           <div className="problem-nav">
             {currentTest.problemIds.map((problemId, index) => {
-              const problem = getProblemById(problemId);
               const isActive = index === currentProblemIndex;
               const isSolved = solvedProblems.has(problemId);
               
@@ -493,19 +497,28 @@ export default function ProblemView({ onBack, test }) {
                           </div>
                           {!result.passed && (
                             <div className="test-result-details">
-                              <div><strong>Input:</strong> <code>{result.input}</code></div>
-                              <div><strong>Expected:</strong> <code>{result.expectedOutput}</code></div>
-                              <div><strong>Got:</strong> <code>{result.actualOutput || result.error}</code></div>
-                              {result.normalizedExpected && result.normalizedActual && (
-                                <div className="normalized-comparison">
-                                  <div><strong>Expected (normalized):</strong> <code>"{result.normalizedExpected}"</code></div>
-                                  <div><strong>Got (normalized):</strong> <code>"{result.normalizedActual}"</code></div>
+                              {result.error ? (
+                                <div className="error-message">
+                                  <strong>Error:</strong> <code>{result.error}</code>
+                                  {result.details && <div className="error-details">{result.details}</div>}
+                                </div>
+                              ) : (
+                                <div className="failure-message">
+                                  <p>❌ Wrong Answer</p>
+                                  <p className="hint">
+                                    Your output doesn't match the expected output. 
+                                    Test cases are hidden to prevent hardcoding solutions.
+                                  </p>
                                 </div>
                               )}
                             </div>
                           )}
                         </div>
                       ))}
+                    </div>
+                    <div className="submission-note">
+                      <strong>Note:</strong> Your code is tested against multiple test cases, including hidden ones that you cannot see. 
+                      This ensures you implement the actual logic rather than hardcoding outputs.
                     </div>
                   </div>
                 ) : (

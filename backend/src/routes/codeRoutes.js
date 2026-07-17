@@ -140,6 +140,7 @@ router.get("/submissions/status/:id", requireAuth, async (req, res) => {
       results: resultsObj.results || [],
       metrics: resultsObj.metrics || {},
     });
+
   } catch (error) {
     console.error("[API] Status polling error:", error);
     res.status(500).json({
@@ -154,9 +155,14 @@ router.get("/submissions/status/:id", requireAuth, async (req, res) => {
 
 router.post("/code/save", requireAuth, async (req, res) => {
   try {
-    const { problemId, language, code } = req.body;
-    if (!problemId || !language || code === undefined) {
-      return res.status(400).json({ success: false, error: "problemId, language, and code are required" });
+    // 1. Check Redis cache first (Fast Path)
+    const cachedData = await connection.get(`submission:status:${submissionId}`);
+    if (cachedData) {
+      const parsed = JSON.parse(cachedData);
+      return res.json({
+        success: true,
+        ...parsed,
+      });
     }
     await CodeDraftDB.save(req.userId, problemId, language, code);
     res.json({ success: true });
@@ -181,7 +187,12 @@ router.get("/submissions/:problemId", requireAuth, async (req, res) => {
     const history = await SubmissionDB.getByProblem(req.userId, req.params.problemId);
     res.json({ success: true, submissions: history });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error("[API] Status polling error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to load submission status",
+      details: error.message,
+    });
   }
 });
 
