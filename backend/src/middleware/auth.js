@@ -1,7 +1,19 @@
 const jwt = require("jsonwebtoken");
-const supabase = require("../config/supabase");
+const { createRemoteJWKSet, jwtVerify } = require("jose");
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+// Initialize JWKS remote key set for RS256 verification
+let JWKS = null;
+if (SUPABASE_URL) {
+  try {
+    JWKS = createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`));
+    console.log("✅ JWKS configured for RS256 token verification");
+  } catch (err) {
+    console.error("❌ Failed to initialize JWKS remote set:", err.message);
+  }
+}
 
 /**
  * Verify Supabase JWT and attach req.userId.
@@ -15,16 +27,16 @@ async function requireAuth(req, res, next) {
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
 
-    // Attempt verification via Supabase client first (handles RS256 seamlessly)
-    if (supabase) {
+    // Attempt verification via JWKS (RS256)
+    if (JWKS) {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (!error && user) {
-          req.userId = user.id;
+        const { payload } = await jwtVerify(token, JWKS);
+        if (payload && payload.sub) {
+          req.userId = payload.sub;
           return next();
         }
       } catch (err) {
-        console.error("Supabase getUser verification failed:", err.message);
+        console.error("Supabase JWKS token verification failed:", err.message);
       }
     }
 
@@ -35,7 +47,7 @@ async function requireAuth(req, res, next) {
         req.userId = payload.sub;
         return next();
       } catch (err) {
-        return res.status(401).json({ success: false, error: "Invalid or expired token" });
+        // Fallback failed
       }
     }
 
