@@ -27,6 +27,17 @@ async function requireAuth(req, res, next) {
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
 
+    try {
+      const decoded = jwt.decode(token);
+      console.log(`[Auth Debug] Incoming token for path ${req.path}:`);
+      console.log(`  - Issuer: ${decoded?.iss}`);
+      console.log(`  - Subject (UserID): ${decoded?.sub}`);
+      console.log(`  - Expires: ${decoded?.exp ? new Date(decoded.exp * 1000).toISOString() : "N/A"}`);
+      console.log(`  - Role: ${decoded?.role}`);
+    } catch (e) {
+      console.error("[Auth Debug] Failed to decode token:", e.message);
+    }
+
     // Attempt verification via JWKS (RS256)
     if (JWKS) {
       try {
