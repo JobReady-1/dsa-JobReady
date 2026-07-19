@@ -37,6 +37,12 @@ async function requireAuth(req, res, next) {
         }
       } catch (err) {
         console.error("Supabase JWKS token verification failed:", err.message);
+        try {
+          const decoded = jwt.decode(token);
+          console.error("Token issuer was:", decoded?.iss);
+        } catch (decodeErr) {
+          console.error("Failed to decode token:", decodeErr.message);
+        }
       }
     }
 
