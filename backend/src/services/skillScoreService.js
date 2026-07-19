@@ -127,25 +127,6 @@ async function updateSkillScores(userId) {
 }
 
 async function updateUserAnalytics(userId, allPassed, newDifficulty) {
-  // Fetch aggregate counts from submissions table (source of truth)
-  const { rows: stats } = await pool.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE all_passed = true) AS total_solved,
-       COUNT(*) AS total_submissions,
-       COUNT(*) FILTER (WHERE all_passed = true AND difficulty = 'Easy') AS easy_solved,
-       COUNT(*) FILTER (WHERE all_passed = true AND difficulty = 'Medium') AS medium_solved,
-       COUNT(*) FILTER (WHERE all_passed = true AND difficulty = 'Hard') AS hard_solved
-     FROM (
-       SELECT DISTINCT ON (problem_id) s.*, p.difficulty
-       FROM dsa_submissions s
-       -- difficulty comes from our problem bank; join via a subquery since problems live in code
-       -- We'll handle difficulty counting differently below
-       WHERE s.user_id = $1
-       ORDER BY problem_id, submitted_at ASC
-     ) sub`,
-    [userId]
-  );
-
   // Simpler: count distinct solved problems per difficulty by querying submissions + problems in JS
   const { rows: solvedRows } = await pool.query(
     `SELECT DISTINCT problem_id FROM dsa_submissions
@@ -212,8 +193,12 @@ async function updateUserAnalytics(userId, allPassed, newDifficulty) {
   );
   const irs = parseFloat(irsRow[0].avg_score);
 
-  const lastSolvedAt =
-    newVerdict === "ACCEPTED" ? new Date().toISOString() : undefined;
+  // Query existing last_solved_at to avoid reference errors
+  const { rows: existing } = await pool.query(
+    `SELECT last_solved_at FROM dsa_user_analytics WHERE user_id = $1`,
+    [userId]
+  );
+  const lastSolvedAt = allPassed ? new Date().toISOString() : (existing[0]?.last_solved_at ?? null);
 
   await pool.query(
     `INSERT INTO dsa_user_analytics
@@ -243,7 +228,7 @@ async function updateUserAnalytics(userId, allPassed, newDifficulty) {
       acceptanceRate.toFixed(2),
       currentStreak,
       longestStreak,
-      allPassed ? new Date().toISOString() : (analyticsResult.rows[0]?.last_solved_at ?? null),
+      lastSolvedAt,
       irs.toFixed(2),
     ]
   );
