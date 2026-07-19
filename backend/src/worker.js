@@ -2,15 +2,12 @@
 const dotenv = require('dotenv');
 const path = require('path');
 dotenv.config({ path: path.join(__dirname, '../.env') });
-
 const { Worker } = require('bullmq');
 const { connection } = require('./services/submissionQueue');
-const { runTestCases } = require('./services/codeExecutorJudge0');
+const { runTestCases } = require('./services/codeExecutorLocal');
 const SubmissionDB = require('./models/SubmissionDB');
 const problems = require('./data/problems');
 const { updateSkillScores, updateUserAnalytics, recordDailyActivity } = require('./services/skillScoreService');
-
-console.log('🤖 Starting DSA Submission Queue Background Worker...');
 
 // Function to update progress in Redis
 async function updateRedisStatus(submissionId, data) {
