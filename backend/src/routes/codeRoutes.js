@@ -5,25 +5,8 @@ const { executeCode } = require("../services/codeExecutor");
 const { getProblem, getAllProblems, getFullProblem } = require("../data/problems");
 const CodeDraftDB = require("../models/CodeDraftDB");
 const SubmissionDB = require("../models/SubmissionDB");
-const { requireAuth, getJWKSState } = require("../middleware/auth");
+const { requireAuth } = require("../middleware/auth");
 const { submissionQueue, connection } = require("../services/submissionQueue");
-
-// ─── Debug Route ─────────────────────────────────────────────────────────────
-
-router.get("/debug-auth", (req, res) => {
-  try {
-    res.json({
-      success: true,
-      SUPABASE_URL: process.env.SUPABASE_URL || "not_set",
-      SUPABASE_ANON_KEY_length: process.env.SUPABASE_ANON_KEY ? process.env.SUPABASE_ANON_KEY.length : 0,
-      SUPABASE_JWT_SECRET_length: process.env.SUPABASE_JWT_SECRET ? process.env.SUPABASE_JWT_SECRET.length : 0,
-      PORT: process.env.PORT || "not_set",
-      JWKS_INITIALIZED: getJWKSState(),
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // ─── Problem catalogue (public) ──────────────────────────────────────────────
 

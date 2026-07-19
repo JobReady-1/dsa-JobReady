@@ -68,4 +68,4 @@ async function requireAuth(req, res, next) {
   });
 }
 
-module.exports = { requireAuth, getJWKSState: () => !!JWKS };
+module.exports = { requireAuth };
