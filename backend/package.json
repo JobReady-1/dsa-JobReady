@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node src/app.js",
+    "start": "node src/start-all.js",
     "dev": "nodemon --ignore data/ src/app.js",
     "dev:worker": "nodemon --ignore data/ src/worker.js"
   },
